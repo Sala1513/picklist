@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>Picklist Processor</title>
@@ -14,13 +14,24 @@ align-items:center;
 height:100vh;
 margin:0;
 }
+
 .box{
 background:#fff;
-padding:30px;
-border-radius:12px;
-box-shadow:0 10px 25px rgba(0,0,0,.15);
+padding:35px;
+border-radius:14px;
+box-shadow:0 12px 30px rgba(0,0,0,.15);
 text-align:center;
+width:320px;
 }
+
+h2{
+margin-top:0;
+}
+
+input{
+margin-top:10px;
+}
+
 button{
 padding:12px 25px;
 border:none;
@@ -28,8 +39,26 @@ background:#2563eb;
 color:white;
 border-radius:8px;
 cursor:pointer;
-margin-top:15px;
+margin-top:20px;
 font-size:15px;
+width:100%;
+}
+
+button:hover{
+background:#1e4fd1;
+}
+
+#status{
+margin-top:15px;
+font-size:14px;
+white-space:pre-wrap;
+}
+
+#download{
+display:none;
+margin-top:15px;
+font-weight:bold;
+display:block;
 }
 </style>
 </head>
@@ -37,15 +66,20 @@ font-size:15px;
 <body>
 
 <div class="box">
+
 <h2>PROCESS PICKLIST</h2>
 
+<label>Picklist PDF</label><br>
 <input type="file" id="pdf" accept="application/pdf"><br><br>
-<input type="file" id="map"><br><br>
+
+<label>Mapping File</label><br>
+<input type="file" id="map"><br>
 
 <button onclick="upload()">PROCESS</button>
 
-<p id="status"></p>
-<a id="download" style="display:none"></a>
+<div id="status"></div>
+<a id="download"></a>
+
 </div>
 
 <script>
@@ -54,13 +88,18 @@ async function upload(){
 const pdf=document.getElementById("pdf").files[0];
 const map=document.getElementById("map").files[0];
 const status=document.getElementById("status");
+const download=document.getElementById("download");
 
-if(!pdf||!map){
-alert("Upload both files");
+download.style.display="none";
+
+if(!pdf || !map){
+status.innerText="Please upload both files.";
 return;
 }
 
-status.innerText="Processing...";
+status.innerText="Processing... please wait";
+
+try{
 
 const form=new FormData();
 form.append("pdf",pdf);
@@ -72,20 +111,25 @@ body:form
 });
 
 if(!res.ok){
-status.innerText="Server error";
+const text=await res.text();
+status.innerText="ERROR:\n"+text;
 return;
 }
 
 const blob=await res.blob();
 const url=URL.createObjectURL(blob);
 
-const link=document.getElementById("download");
-link.href=url;
-link.download=`Sorted_Shipment_Picklist_${new Date().toISOString().slice(0,10)}.pdf`;
-link.innerText="Download PDF";
-link.style.display="block";
+download.href=url;
+download.download=`Sorted_Shipment_Picklist_${new Date().toISOString().slice(0,10)}.pdf`;
+download.innerText="Download Ready PDF";
+download.style.display="block";
 
-status.innerText="Done ✔";
+status.innerText="SUCCESS ✔ File Ready";
+
+}catch(err){
+status.innerText="ERROR:\n"+err.message;
+}
+
 }
 </script>
 
