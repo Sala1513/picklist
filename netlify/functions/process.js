@@ -3,25 +3,17 @@ const pdfParse = require("pdf-parse");
 
 exports.handler = async (event) => {
 
-if(event.httpMethod === "GET"){
-return { statusCode:200, body:"Backend Ready" };
+if(event.httpMethod==="GET"){
+return{statusCode:200,body:"Backend Ready"};
 }
 
 try{
 
-/* ---------- VALIDATE BODY ---------- */
-if(!event.body){
-return { statusCode:400, body:"No files received" };
-}
+/* ---------- CONVERT BASE64 BODY ---------- */
+const body = Buffer.from(event.body, "base64").toString("binary");
 
-/* ---------- READ MULTIPART ---------- */
-const contentType = event.headers["content-type"] || "";
-if(!contentType.includes("boundary=")){
-return { statusCode:400, body:"Invalid form data" };
-}
-
-const boundary = contentType.split("boundary=")[1];
-const parts = event.body.split(boundary);
+const boundary = event.headers["content-type"].split("boundary=")[1];
+const parts = body.split(boundary);
 
 function getFile(name){
 const part = parts.find(p=>p.includes(`name="${name}"`));
@@ -33,14 +25,14 @@ const pdfBuffer = getFile("pdf");
 const mapBuffer = getFile("map");
 
 if(!pdfBuffer || !mapBuffer){
-return { statusCode:400, body:"Missing PDF or mapping file" };
+return { statusCode:400, body:"File upload failed — try again" };
 }
 
 /* ---------- READ MAPPING ---------- */
-const mapping = {};
+const mapping={};
 mapBuffer.toString().split(/\r?\n/).forEach(line=>{
 const [o,s]=line.split("=");
-if(o && s) mapping[o.trim()] = s.trim();
+if(o&&s) mapping[o.trim()]=s.trim();
 });
 
 /* ---------- READ PDF ---------- */
@@ -51,38 +43,37 @@ const original = await PDFDocument.load(pdfBuffer);
 const newPdf = await PDFDocument.create();
 const font = await newPdf.embedFont(StandardFonts.Helvetica);
 
-const groups = {};
+const groups={};
 
-/* ---------- GROUP PAGES ---------- */
+/* ---------- GROUP ---------- */
 for(let i=0;i<textPages.length;i++){
 
-const match = textPages[i].match(/MBR_\d+/);
-const order = match ? match[0] : "UNKNOWN";
-const ship = mapping[order] || "NO_SHIPMENT";
+const match=textPages[i].match(/MBR_\d+/);
+const order=match?match[0]:"UNKNOWN";
+const ship=mapping[order]||"NO_SHIPMENT";
 
-if(!groups[ship]) groups[ship] = [];
+if(!groups[ship]) groups[ship]=[];
 groups[ship].push(i);
 }
 
 /* ---------- SORT ---------- */
-const sorted = Object.keys(groups).sort();
+const sorted=Object.keys(groups).sort();
 
 /* ---------- BUILD PDF ---------- */
 for(const ship of sorted){
 for(const index of groups[ship]){
 
-const [page] = await newPdf.copyPages(original,[index]);
-const { width } = page.getSize();
+const [page]=await newPdf.copyPages(original,[index]);
+const {width}=page.getSize();
 
-page.drawText(ship,{ x:20, y:15, size:10, font, color:rgb(0,0,0) });
-page.drawText(ship,{ x:width-120, y:15, size:10, font, color:rgb(0,0,0) });
+page.drawText(ship,{x:20,y:15,size:10,font,color:rgb(0,0,0)});
+page.drawText(ship,{x:width-120,y:15,size:10,font,color:rgb(0,0,0)});
 
 newPdf.addPage(page);
 }
 }
 
-/* ---------- OUTPUT ---------- */
-const bytes = await newPdf.save();
+const bytes=await newPdf.save();
 
 return{
 statusCode:200,
