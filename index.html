@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<title>Process Picklist</title>
+<title>Picklist Processor</title>
 
 <style>
 body{
@@ -15,10 +15,10 @@ height:100vh;
 margin:0;
 }
 .box{
-background:white;
+background:#fff;
 padding:30px;
 border-radius:12px;
-box-shadow:0 10px 25px rgba(0,0,0,.1);
+box-shadow:0 10px 25px rgba(0,0,0,.15);
 text-align:center;
 }
 button{
@@ -29,6 +29,7 @@ color:white;
 border-radius:8px;
 cursor:pointer;
 margin-top:15px;
+font-size:15px;
 }
 </style>
 </head>
@@ -36,17 +37,15 @@ margin-top:15px;
 <body>
 
 <div class="box">
-
 <h2>PROCESS PICKLIST</h2>
 
-<input type="file" id="pdf"><br><br>
+<input type="file" id="pdf" accept="application/pdf"><br><br>
 <input type="file" id="map"><br><br>
 
 <button onclick="upload()">PROCESS</button>
 
 <p id="status"></p>
-<a id="download"></a>
-
+<a id="download" style="display:none"></a>
 </div>
 
 <script>
@@ -73,7 +72,7 @@ body:form
 });
 
 if(!res.ok){
-status.innerText="Error processing file";
+status.innerText="Server error";
 return;
 }
 
