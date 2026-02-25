@@ -2,6 +2,11 @@ const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const pdfParse = require("pdf-parse");
 
 exports.handler = async (event) => {
+
+if(event.httpMethod==="GET"){
+return{statusCode:200,body:"Backend Ready"};
+}
+
 try{
 
 const boundary = event.headers["content-type"].split("boundary=")[1];
@@ -15,7 +20,7 @@ return Buffer.from(part.split("\r\n\r\n")[1].trim(),"binary");
 const pdfBuffer = getFile("pdf");
 const mapBuffer = getFile("map");
 
-/* READ MAPPING */
+/* MAPPING */
 const mapping={};
 mapBuffer.toString().split(/\r?\n/).forEach(line=>{
 const [o,s]=line.split("=");
@@ -34,6 +39,7 @@ const groups={};
 
 /* GROUP */
 for(let i=0;i<textPages.length;i++){
+
 const match=textPages[i].match(/MBR_\d+/);
 const order=match?match[0]:"UNKNOWN";
 const ship=mapping[order]||"NO_SHIPMENT";
