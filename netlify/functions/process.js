@@ -124,8 +124,10 @@ newPdf.addPage(page);
 }
 
 /* ---------- SAVE ---------- */
-const bytes = await newPdf.save();
-
+const bytes = await newPdf.save({
+useObjectStreams:true,
+compress:true
+});
 /* ---------- RESPONSE ---------- */
 return{
 statusCode:200,
