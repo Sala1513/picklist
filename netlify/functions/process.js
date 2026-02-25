@@ -1,5 +1,6 @@
 const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const pdfParse = require("pdf-parse");
+const XLSX = require("xlsx");
 
 exports.handler = async (event) => {
 
@@ -9,9 +10,10 @@ return{statusCode:200,body:"Backend Ready"};
 
 try{
 
-/* ---------- CONVERT BASE64 BODY ---------- */
-const body = Buffer.from(event.body, "base64").toString("binary");
+/* ---------- BODY DECODE ---------- */
+const body = Buffer.from(event.body,"base64").toString("binary");
 
+/* ---------- MULTIPART SPLIT ---------- */
 const boundary = event.headers["content-type"].split("boundary=")[1];
 const parts = body.split(boundary);
 
@@ -25,56 +27,106 @@ const pdfBuffer = getFile("pdf");
 const mapBuffer = getFile("map");
 
 if(!pdfBuffer || !mapBuffer){
-return { statusCode:400, body:"File upload failed — try again" };
+return{statusCode:400,body:"Files not received"};
 }
 
 /* ---------- READ MAPPING ---------- */
-const mapping={};
-mapBuffer.toString().split(/\r?\n/).forEach(line=>{
+function readMapping(buffer){
+
+/* try excel */
+try{
+const wb = XLSX.read(buffer,{type:"buffer"});
+const sheet = wb.Sheets[wb.SheetNames[0]];
+const rows = XLSX.utils.sheet_to_json(sheet,{header:1});
+
+const map={};
+
+rows.forEach(r=>{
+if(!r[0]) return;
+const line=String(r[0]).trim();
+if(line.includes("=")){
 const [o,s]=line.split("=");
-if(o&&s) mapping[o.trim()]=s.trim();
+map[o.trim()]=s.trim();
+}
 });
 
-/* ---------- READ PDF ---------- */
-const parsed = await pdfParse(pdfBuffer);
-const textPages = parsed.text.split("\f");
+if(Object.keys(map).length>0) return map;
+}catch(e){}
 
+/* fallback text */
+const map={};
+buffer.toString().split(/\r?\n/).forEach(line=>{
+const [o,s]=line.split("=");
+if(o&&s) map[o.trim()]=s.trim();
+});
+return map;
+}
+
+const mapping = readMapping(mapBuffer);
+
+/* ---------- LOAD PDF ---------- */
+const parsed = await pdfParse(pdfBuffer);
+
+/* ---------- PAGE SPLIT (FIXED) ---------- */
+const pageTexts = parsed.text
+.split(/Page Nbr\s*\d+/gi)
+.filter(t=>t.trim()!="");
+
+/* ---------- ORIGINAL PDF ---------- */
 const original = await PDFDocument.load(pdfBuffer);
 const newPdf = await PDFDocument.create();
 const font = await newPdf.embedFont(StandardFonts.Helvetica);
 
 const groups={};
 
-/* ---------- GROUP ---------- */
-for(let i=0;i<textPages.length;i++){
+/* ---------- GROUP BY SHIPMENT ---------- */
+for(let i=0;i<pageTexts.length;i++){
 
-const match=textPages[i].match(/MBR_\d+/);
-const order=match?match[0]:"UNKNOWN";
-const ship=mapping[order]||"NO_SHIPMENT";
+const match = pageTexts[i].match(/MBR_\d+/);
+const order = match ? match[0] : "UNKNOWN";
+const ship = mapping[order] || "NO_SHIPMENT";
 
 if(!groups[ship]) groups[ship]=[];
 groups[ship].push(i);
 }
 
-/* ---------- SORT ---------- */
-const sorted=Object.keys(groups).sort();
+/* ---------- SORT SHIPMENTS ---------- */
+const sortedShips = Object.keys(groups).sort();
 
-/* ---------- BUILD PDF ---------- */
-for(const ship of sorted){
-for(const index of groups[ship]){
+/* ---------- BUILD OUTPUT PDF ---------- */
+for(const ship of sortedShips){
 
-const [page]=await newPdf.copyPages(original,[index]);
-const {width}=page.getSize();
+for(const pageIndex of groups[ship]){
 
-page.drawText(ship,{x:20,y:15,size:10,font,color:rgb(0,0,0)});
-page.drawText(ship,{x:width-120,y:15,size:10,font,color:rgb(0,0,0)});
+const [page] = await newPdf.copyPages(original,[pageIndex]);
+const {width} = page.getSize();
+
+/* left footer */
+page.drawText(ship,{
+x:20,
+y:15,
+size:10,
+font,
+color:rgb(0,0,0)
+});
+
+/* right footer */
+page.drawText(ship,{
+x:width-120,
+y:15,
+size:10,
+font,
+color:rgb(0,0,0)
+});
 
 newPdf.addPage(page);
 }
 }
 
-const bytes=await newPdf.save();
+/* ---------- SAVE ---------- */
+const bytes = await newPdf.save();
 
+/* ---------- RESPONSE ---------- */
 return{
 statusCode:200,
 headers:{ "Content-Type":"application/pdf" },
