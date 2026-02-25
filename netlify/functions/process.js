@@ -3,31 +3,47 @@ const pdfParse = require("pdf-parse");
 
 exports.handler = async (event) => {
 
-if(event.httpMethod==="GET"){
-return{statusCode:200,body:"Backend Ready"};
+if(event.httpMethod === "GET"){
+return { statusCode:200, body:"Backend Ready" };
 }
 
 try{
 
-const boundary = event.headers["content-type"].split("boundary=")[1];
+/* ---------- VALIDATE BODY ---------- */
+if(!event.body){
+return { statusCode:400, body:"No files received" };
+}
+
+/* ---------- READ MULTIPART ---------- */
+const contentType = event.headers["content-type"] || "";
+if(!contentType.includes("boundary=")){
+return { statusCode:400, body:"Invalid form data" };
+}
+
+const boundary = contentType.split("boundary=")[1];
 const parts = event.body.split(boundary);
 
 function getFile(name){
 const part = parts.find(p=>p.includes(`name="${name}"`));
+if(!part) return null;
 return Buffer.from(part.split("\r\n\r\n")[1].trim(),"binary");
 }
 
 const pdfBuffer = getFile("pdf");
 const mapBuffer = getFile("map");
 
-/* MAPPING */
-const mapping={};
+if(!pdfBuffer || !mapBuffer){
+return { statusCode:400, body:"Missing PDF or mapping file" };
+}
+
+/* ---------- READ MAPPING ---------- */
+const mapping = {};
 mapBuffer.toString().split(/\r?\n/).forEach(line=>{
 const [o,s]=line.split("=");
-if(o&&s) mapping[o.trim()]=s.trim();
+if(o && s) mapping[o.trim()] = s.trim();
 });
 
-/* READ PDF */
+/* ---------- READ PDF ---------- */
 const parsed = await pdfParse(pdfBuffer);
 const textPages = parsed.text.split("\f");
 
@@ -35,37 +51,38 @@ const original = await PDFDocument.load(pdfBuffer);
 const newPdf = await PDFDocument.create();
 const font = await newPdf.embedFont(StandardFonts.Helvetica);
 
-const groups={};
+const groups = {};
 
-/* GROUP */
+/* ---------- GROUP PAGES ---------- */
 for(let i=0;i<textPages.length;i++){
 
-const match=textPages[i].match(/MBR_\d+/);
-const order=match?match[0]:"UNKNOWN";
-const ship=mapping[order]||"NO_SHIPMENT";
+const match = textPages[i].match(/MBR_\d+/);
+const order = match ? match[0] : "UNKNOWN";
+const ship = mapping[order] || "NO_SHIPMENT";
 
-if(!groups[ship]) groups[ship]=[];
+if(!groups[ship]) groups[ship] = [];
 groups[ship].push(i);
 }
 
-/* SORT */
-const sorted=Object.keys(groups).sort();
+/* ---------- SORT ---------- */
+const sorted = Object.keys(groups).sort();
 
-/* BUILD PDF */
+/* ---------- BUILD PDF ---------- */
 for(const ship of sorted){
 for(const index of groups[ship]){
 
-const [page]=await newPdf.copyPages(original,[index]);
-const {width}=page.getSize();
+const [page] = await newPdf.copyPages(original,[index]);
+const { width } = page.getSize();
 
-page.drawText(ship,{x:20,y:15,size:10,font,color:rgb(0,0,0)});
-page.drawText(ship,{x:width-120,y:15,size:10,font,color:rgb(0,0,0)});
+page.drawText(ship,{ x:20, y:15, size:10, font, color:rgb(0,0,0) });
+page.drawText(ship,{ x:width-120, y:15, size:10, font, color:rgb(0,0,0) });
 
 newPdf.addPage(page);
 }
 }
 
-const bytes=await newPdf.save();
+/* ---------- OUTPUT ---------- */
+const bytes = await newPdf.save();
 
 return{
 statusCode:200,
@@ -75,6 +92,9 @@ isBase64Encoded:true
 };
 
 }catch(err){
-return{statusCode:500,body:err.toString()};
+return{
+statusCode:500,
+body:"SERVER ERROR:\n"+err.toString()
+};
 }
 };
